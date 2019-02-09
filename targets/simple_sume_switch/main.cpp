@@ -1,10 +1,9 @@
-//#include <bm/SimpleSumeSwitch.h>
-#include <bm/bm_runtime/bm_runtime.h>
-//#include <bm/bm_sim/target_parser.h>
+/*
+ * Sarah Tollman (stollman@stanford.edu)
+ *   Modified by: Stephen Ibanez (sibanez@stanford.edu)
+ */
 
-//#include <sstream>
-//#include <string>
-//#include <vector>
+#include <bm/bm_runtime/bm_runtime.h>
 
 #include "simple_sume_switch.h"
 
@@ -18,7 +17,6 @@ main(int argc, char* argv[]) {
   int status = simple_sume_switch->init_from_command_line_options(argc, argv);
   if (status != 0) std::exit(status);
 
-  // TODO: thrift
   int thrift_port = simple_sume_switch->get_runtime_port();
   bm_runtime::start_server(simple_sume_switch, thrift_port);
 

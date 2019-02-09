@@ -1,3 +1,8 @@
+/*
+ * Sarah Tollman (stollman@stanford.edu)
+ *   Modified by: Stephen Ibanez (sibanez@stanford.edu)
+ */
+
 #ifndef SIMPLE_SUME_SWITCH_H_
 #define SIMPLE_SUME_SWITCH_H_
 
@@ -25,26 +30,32 @@ using bm::PHV;
 using bm::Parser;
 using bm::Deparser;
 using bm::Pipeline;
-using bm::McSimplePreLAG;
 using bm::Field;
 using bm::FieldList;
 using bm::packet_id_t;
 using bm::p4object_id_t;
 // TODO: remove unnecessary imports
 
+// SUME ports are one-hot encoded
+typedef uint8_t sume_port_t;
+#define NF0_MASK 0x01
+#define NF1_MASK 0x04
+#define NF2_MASK 0x10
+#define NF3_MASK 0x40
+#define DMA0_MASK  0x02
+
+#define DIGEST_SIZE 32
+
 class SimpleSumeSwitch : public Switch {
  public:
-  using mirror_id_t = int;
-
   using TransmitFn = std::function<void(port_t, packet_id_t,
                                          const char *, int)>;
 
  public:
   // by default, swapping is off
-  explicit SimpleSumeSwitch(bool enable_swap = false);
+  explicit SimpleSumeSwitch(port_t max_port = 5, bool enable_swap = false);
 
   ~SimpleSumeSwitch();
-
 
   int receive_(port_t port_num, const char *buffer, int len) override;
 
@@ -61,35 +72,10 @@ class SimpleSumeSwitch : public Switch {
     my_transmit_fn = std::move(fn);
   }
 
-  // TODO: what is mirroring???
-  int mirroring_mapping_add(mirror_id_t mirror_id, port_t egress_port) {
-    mirroring_map[mirror_id] = egress_port;
-    return 0;
-  }
-
-  int mirroring_mapping_delete(mirror_id_t mirror_id) {
-    return mirroring_map.erase(mirror_id);
-  }
-
-  bool mirroring_mapping_get(mirror_id_t mirror_id, port_t *port) const {
-    return get_mirroring_mapping(mirror_id, port);
-  }
-
  private:
   static packet_id_t packet_id;
-  std::shared_ptr<McSimplePreLAG> pre; // TODO: is this necessary?
-
   TransmitFn my_transmit_fn;
-  std::unordered_map<mirror_id_t, port_t> mirroring_map;
 
-  bool get_mirroring_mapping(mirror_id_t mirror_id, port_t *port) const {
-    const auto it = mirroring_map.find(mirror_id);
-    if (it != mirroring_map.end()) {
-      *port = it->second;
-      return true;
-    }
-    return false;
-  }
 };
 
 #endif  // SIMPLE_SUME_SWITCH_H_

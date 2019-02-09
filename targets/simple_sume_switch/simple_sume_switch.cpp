@@ -1,3 +1,8 @@
+/*
+ * Sarah Tollman (stollman@stanford.edu)
+ *   Modified by: Stephen Ibanez (sibanez@stanford.edu)
+ */
+
 #include <bm/bm_sim/parser.h>
 #include <bm/bm_sim/tables.h>
 #include <bm/bm_sim/logger.h>
@@ -12,6 +17,9 @@
 
 #include "simple_sume_switch.h"
 
+using bm::Header;
+using bm::ByteContainer;
+
 packet_id_t SimpleSumeSwitch::packet_id = 0;
 
 SimpleSumeSwitch::SimpleSumeSwitch(bool enable_swap)
@@ -21,6 +29,13 @@ SimpleSumeSwitch::SimpleSumeSwitch(bool enable_swap)
       _BM_UNUSED(pkt_id);
       this->transmit_fn(port_num, buffer, len);
   }) {
+
+  // Initialize the port_map
+  port_map[1] = DMA0_MASK;
+  port_map[2] = NF0_MASK;
+  port_map[3] = NF1_MASK;
+  port_map[4] = NF2_MASK;
+  port_map[5] = NF3_MASK;
 
   add_required_field("sume_metadata_t", "dma_q_size");
   add_required_field("sume_metadata_t", "nf3_q_size");
@@ -40,7 +55,6 @@ SimpleSumeSwitch::SimpleSumeSwitch(bool enable_swap)
 SimpleSumeSwitch::~SimpleSumeSwitch() {}
 
 #define PACKET_LENGTH_REG_IDX 0
-#define DROP_PORT 0
 
 int
 SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
@@ -58,11 +72,14 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   // many current P4 programs assume this
   // it is also part of the original P4 spec
   phv->reset_metadata();
-  phv->get_field("sume_metadata_t.src_port").set(port_num);
+
+  // TODO(sibanez): set queue size metadata fields
+
+  sume_port_t src_port = port_map[port_num];
+  phv->get_field("sume_metadata_t.src_port").set(src_port);
 
   // using packet register 0 to store length, this register will be updated for
   // each add_header / remove_header primitive call
-  // TODO: is this still relevant??
   packet->set_register(PACKET_LENGTH_REG_IDX, len);
   phv->get_field("sume_metadata_t.pkt_len").set(len);
 
@@ -75,24 +92,54 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   BMLOG_DEBUG_PKT(*packet, "Processing packet received on port {}",
                   ingress_port);
 
-  auto p = packet.get();
-  parser->parse(p);
+  parser->parse(packet.get());
   pipeline->apply(packet.get());
   packet->reset_exit(); // TODO: do I need this?
-  phv->get_field("sume_metadata_t.pkt_len").set(packet->get_data_size());
-  port_t egress_port = phv->get_field("sume_metadata_t.dst_port").get_int();
-  packet->set_egress_port(egress_port);
-
-  if (DROP_PORT == egress_port) { // drop packet
-    BMLOG_DEBUG_PKT(*packet, "Dropping packet");
-    return 0;
-  }
-  
   deparser->deparse(packet.get());
 
-  // TODO: traffic management
-  // TODO: prepend digest data if send to cpu
-  /* send_dig_to_cpu - set the least significant bit of this field to send the digest_data to the CPU. If this bit is set and a packet is to be forwarded to the CPU then the digest_data will be prepended to the packet. Otherwise, only the digest_data will be sent over DMA. */
+  sume_port_t dst_port = phv->get_field("sume_metadata.dst_port").get_uint();
+  if (dst_port == 0) {
+    // drop packet
+    BMLOG_DEBUG_PKT(*packet, "Dropping packet at the end of ingress");
+    // TODO: technically still need to send digest_data to control-plane
+    // if the send_dig_to_cpu field is set
+    return 0;
+  }
+
+  // TODO: add support for broadcasting
+  port_t egress_spec;
+  if (dst_port & DMA0_MASK)
+    egress_spec = 1;
+  if (dst_port & PORT0_MASK)
+    egress_spec = 2;
+  if (dst_port & PORT1_MASK)
+    egress_spec = 3;
+  if (dst_port & PORT2_MASK)
+    egress_spec = 4;
+  if (dst_port & PORT3_MASK)
+    egress_spec = 5;
+
+  packet->set_egress_port(egress_spec);
+  BMLOG_DEBUG_PKT(*packet, "Packet destined for port {} at end of ingress", egress_spec);
+
+  bool send_dig_to_cpu = phv->get_field("sume_metadata.send_dig_to_cpu").get_bool();
+  if ((dst_port & DMA0_MASK) && send_dig_to_cpu) {
+    //TODO(sibanez): prepend digest_data to packet before transmission
+    ByteContainer digest_data(DIGEST_SIZE);
+    Header digest_hdr = phv->get_header("digest_data_t");
+    for (size_type i = 0; i < digest_hdr.size(); i++) {
+      const ByteContainer bytes = digest_hdr.get_field(i).get_bytes();
+      digest_data.append(bytes);
+    }
+    BMLOG_DEBUG("Created digest_data: " + digest_data.to_hex());
+    // TODO(sibanez): check digest_data
+    ByteContainer new_packet(packet.data(), packet.get_data_size());
+    new_packet.insert(new_packet.begin(), digest_data);
+    // replace packet with digest_data ++ packet
+    memcpy(packet.data(), new_packet.data(), new_packet.size());
+  }
+
+  // TODO: send digest_data to control-plane if send_dig_to_cpu field is set (even if the the packet is not forwarded to the control-plane)
 
   BMELOG(packet_out, *packet);
   BMLOG_DEBUG_PKT(*packet, "Transmitting packet of size {} out of port {}",
@@ -110,5 +157,5 @@ SimpleSumeSwitch::start_and_return_() { }
 void
 SimpleSumeSwitch::reset_target_state_() {
   bm::Logger::get()->debug("Resetting simple_sume_switch target-specific state");
-  get_component<McSimplePreLAG>()->reset_state();
 }
+
