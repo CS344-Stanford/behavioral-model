@@ -51,21 +51,23 @@ class SimpleSumeSwitchHandler : virtual public SimpleSumeSwitchIf {
   int32_t mirroring_mapping_add(const int32_t mirror_id,
                                 const int32_t egress_port) {
     bm::Logger::get()->trace("mirroring_mapping_add");
-    return switch_->mirroring_mapping_add(mirror_id, egress_port);
+    return 0; //TODO: switch_->mirroring_mapping_add(mirror_id, egress_port);
   }
 
   int32_t mirroring_mapping_delete(const int32_t mirror_id) {
     bm::Logger::get()->trace("mirroring_mapping_delete");
-    return switch_->mirroring_mapping_delete(mirror_id);
+    return 0; //TODO: switch_->mirroring_mapping_delete(mirror_id);
   }
 
   int32_t mirroring_mapping_get_egress_port(const int32_t mirror_id) {
     bm::Logger::get()->trace("mirroring_mapping_get_egress_port");
     bm::port_t port;
-    if (switch_->mirroring_mapping_get(mirror_id, &port)) {
-      return port;
-    }
-    return -1;
+    return 0;
+//  TODO:
+//    if (switch_->mirroring_mapping_get(mirror_id, &port)) {
+//      return port;
+//    }
+//    return -1;
   }
 
   int32_t set_egress_queue_depth(const int32_t port_num,

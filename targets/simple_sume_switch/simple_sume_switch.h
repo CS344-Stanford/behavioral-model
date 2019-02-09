@@ -73,9 +73,10 @@ class SimpleSumeSwitch : public Switch {
   }
 
  private:
+  port_t max_port;
   static packet_id_t packet_id;
   TransmitFn my_transmit_fn;
-
+  std::map<port_t, sume_port_t> port_map;
 };
 
 #endif  // SIMPLE_SUME_SWITCH_H_

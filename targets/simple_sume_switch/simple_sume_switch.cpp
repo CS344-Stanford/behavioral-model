@@ -22,9 +22,10 @@ using bm::ByteContainer;
 
 packet_id_t SimpleSumeSwitch::packet_id = 0;
 
-SimpleSumeSwitch::SimpleSumeSwitch(bool enable_swap)
+SimpleSumeSwitch::SimpleSumeSwitch(port_t max_port, bool enable_swap)
   : Switch(enable_swap),
-  my_transmit_fn([this](port_t port_num, packet_id_t pkt_id,
+    max_port(max_port),
+    my_transmit_fn([this](port_t port_num, packet_id_t pkt_id,
                         const char *buffer, int len) {
       _BM_UNUSED(pkt_id);
       this->transmit_fn(port_num, buffer, len);
@@ -58,6 +59,10 @@ SimpleSumeSwitch::~SimpleSumeSwitch() {}
 
 int
 SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
+  if (port_num > max_port) {
+      bm::Logger::get()->error("Packet arrived on invalid port %u, dropping packet", port_num);
+      return 0;
+  }
   // we limit the packet buffer to original size + 512 bytes, which means we
   // cannot add more than 512 bytes of header data to the packet, which should
   // be more than enough
@@ -110,33 +115,32 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   port_t egress_spec;
   if (dst_port & DMA0_MASK)
     egress_spec = 1;
-  if (dst_port & PORT0_MASK)
+  if (dst_port & NF0_MASK)
     egress_spec = 2;
-  if (dst_port & PORT1_MASK)
+  if (dst_port & NF1_MASK)
     egress_spec = 3;
-  if (dst_port & PORT2_MASK)
+  if (dst_port & NF2_MASK)
     egress_spec = 4;
-  if (dst_port & PORT3_MASK)
+  if (dst_port & NF3_MASK)
     egress_spec = 5;
 
   packet->set_egress_port(egress_spec);
   BMLOG_DEBUG_PKT(*packet, "Packet destined for port {} at end of ingress", egress_spec);
 
-  bool send_dig_to_cpu = phv->get_field("sume_metadata.send_dig_to_cpu").get_bool();
+  bool send_dig_to_cpu = (phv->get_field("sume_metadata.send_dig_to_cpu").get_uint() != 0);
   if ((dst_port & DMA0_MASK) && send_dig_to_cpu) {
     //TODO(sibanez): prepend digest_data to packet before transmission
     ByteContainer digest_data(DIGEST_SIZE);
-    Header digest_hdr = phv->get_header("digest_data_t");
-    for (size_type i = 0; i < digest_hdr.size(); i++) {
-      const ByteContainer bytes = digest_hdr.get_field(i).get_bytes();
+    for (size_t i = 0; i < phv->get_header("digest_data_t").size(); i++) {
+      const ByteContainer bytes = phv->get_header("digest_data_t").get_field(i).get_bytes();
       digest_data.append(bytes);
     }
     BMLOG_DEBUG("Created digest_data: " + digest_data.to_hex());
     // TODO(sibanez): check digest_data
-    ByteContainer new_packet(packet.data(), packet.get_data_size());
+    ByteContainer new_packet(packet->data(), packet->get_data_size());
     new_packet.insert(new_packet.begin(), digest_data);
     // replace packet with digest_data ++ packet
-    memcpy(packet.data(), new_packet.data(), new_packet.size());
+    memcpy(packet->data(), new_packet.data(), new_packet.size());
   }
 
   // TODO: send digest_data to control-plane if send_dig_to_cpu field is set (even if the the packet is not forwarded to the control-plane)
