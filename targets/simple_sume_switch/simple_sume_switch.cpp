@@ -17,7 +17,40 @@
 
 #include "simple_sume_switch.h"
 
-using bm::Header;
+namespace {
+
+struct hash_ex {
+  uint32_t operator()(const char *buf, size_t s) const {
+    const uint32_t p = 16777619;
+    uint32_t hash = 2166136261;
+
+    for (size_t i = 0; i < s; i++)
+      hash = (hash ^ buf[i]) * p;
+
+    hash += hash << 13;
+    hash ^= hash >> 7;
+    hash += hash << 3;
+    hash ^= hash >> 17;
+    hash += hash << 5;
+    return static_cast<uint32_t>(hash);
+  }
+};
+
+struct bmv2_hash {
+  uint64_t operator()(const char *buf, size_t s) const {
+    return bm::hash::xxh64(buf, s);
+  }
+};
+
+}  // namespace
+
+// if REGISTER_HASH calls placed in the anonymous namespace, some compiler can
+// give an unused variable warning
+REGISTER_HASH(hash_ex);
+REGISTER_HASH(bmv2_hash);
+
+//extern int import_primitives();
+
 using bm::ByteContainer;
 
 packet_id_t SimpleSumeSwitch::packet_id = 0;
@@ -51,6 +84,8 @@ SimpleSumeSwitch::SimpleSumeSwitch(port_t max_port, bool enable_swap)
   force_arith_header("sume_metadata_t");
   force_arith_header("user_metadata_t");
   force_arith_header("digest_data_t");
+
+//  import_primitives();
 }
 
 SimpleSumeSwitch::~SimpleSumeSwitch() {}
@@ -102,7 +137,7 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   packet->reset_exit(); // TODO: do I need this?
   deparser->deparse(packet.get());
 
-  sume_port_t dst_port = phv->get_field("sume_metadata.dst_port").get_uint();
+  sume_port_t dst_port = phv->get_field("sume_metadata_t.dst_port").get_uint();
   if (dst_port == 0) {
     // drop packet
     BMLOG_DEBUG_PKT(*packet, "Dropping packet at the end of ingress");
@@ -127,20 +162,20 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   packet->set_egress_port(egress_spec);
   BMLOG_DEBUG_PKT(*packet, "Packet destined for port {} at end of ingress", egress_spec);
 
-  bool send_dig_to_cpu = (phv->get_field("sume_metadata.send_dig_to_cpu").get_uint() != 0);
+  bool send_dig_to_cpu = (phv->get_field("sume_metadata_t.send_dig_to_cpu").get_uint() != 0);
   if ((dst_port & DMA0_MASK) && send_dig_to_cpu) {
     //TODO(sibanez): prepend digest_data to packet before transmission
     ByteContainer digest_data(DIGEST_SIZE);
-    for (size_t i = 0; i < phv->get_header("digest_data_t").size(); i++) {
-      const ByteContainer bytes = phv->get_header("digest_data_t").get_field(i).get_bytes();
-      digest_data.append(bytes);
-    }
-    BMLOG_DEBUG("Created digest_data: " + digest_data.to_hex());
+    const ByteContainer dig_src_port = phv->get_field("scalars.digest_data_t.src_port").get_bytes();
+    const ByteContainer dig_code = phv->get_field("scalars.digest_data_t.digest_code").get_bytes();
+    digest_data.append(dig_src_port);
+    digest_data.append(dig_code);
+    BMLOG_DEBUG("Created digest_data (" + std::to_string(digest_data.size()) +"B): " + digest_data.to_hex());
     // TODO(sibanez): check digest_data
     ByteContainer new_packet(packet->data(), packet->get_data_size());
     new_packet.insert(new_packet.begin(), digest_data);
     // replace packet with digest_data ++ packet
-    memcpy(packet->data(), new_packet.data(), new_packet.size());
+//    memcpy(packet->data(), new_packet.data(), new_packet.size());
   }
 
   // TODO: send digest_data to control-plane if send_dig_to_cpu field is set (even if the the packet is not forwarded to the control-plane)
