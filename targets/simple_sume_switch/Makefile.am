@@ -20,7 +20,8 @@ lib_LTLIBRARIES = libsimplesumeswitch_runner.la
 
 libsimplesumeswitch_la_SOURCES = \
 simple_sume_switch.cpp \
-simple_sume_switch.h
+simple_sume_switch.h \
+primitives.cpp
 
 libsimplesumeswitch_runner_la_SOURCES = \
 runner.cpp

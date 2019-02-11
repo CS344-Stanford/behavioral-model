@@ -49,7 +49,7 @@ struct bmv2_hash {
 REGISTER_HASH(hash_ex);
 REGISTER_HASH(bmv2_hash);
 
-//extern int import_primitives();
+extern int import_primitives();
 
 using bm::ByteContainer;
 
@@ -65,6 +65,7 @@ SimpleSumeSwitch::SimpleSumeSwitch(port_t max_port, bool enable_swap)
   }) {
 
   // Initialize the port_map
+  port_map[0] = DMA0_MASK;
   port_map[1] = DMA0_MASK;
   port_map[2] = NF0_MASK;
   port_map[3] = NF1_MASK;
@@ -85,7 +86,7 @@ SimpleSumeSwitch::SimpleSumeSwitch(port_t max_port, bool enable_swap)
   force_arith_header("user_metadata_t");
   force_arith_header("digest_data_t");
 
-//  import_primitives();
+  import_primitives();
 }
 
 SimpleSumeSwitch::~SimpleSumeSwitch() {}
@@ -147,7 +148,7 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   }
 
   // TODO: add support for broadcasting
-  port_t egress_spec;
+  port_t egress_spec = 0;
   if (dst_port & DMA0_MASK)
     egress_spec = 1;
   if (dst_port & NF0_MASK)
