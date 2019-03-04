@@ -90,7 +90,10 @@ def main():
 
     runtime_CLI.load_json_config(standard_client, args.json)
 
-    SimpleSumeSwitchAPI(args.pre, standard_client, mc_client, sswitch_client).cmdloop()
+    if args.cmd != '':
+        SimpleSumeSwitchAPI(args.pre, standard_client, mc_client, sswitch_client).onecmd(args.cmd)
+    else:
+        SimpleSumeSwitchAPI(args.pre, standard_client, mc_client, sswitch_client).cmdloop()
 
 if __name__ == '__main__':
     main()

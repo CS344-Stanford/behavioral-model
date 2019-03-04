@@ -97,6 +97,9 @@ def get_parser():
                         type=str, choices=['None', 'SimplePre', 'SimplePreLAG'],
                         default=PreType.SimplePre, action=ActionToPreType)
 
+    parser.add_argument('--cmd', help='A single CLI command to run',
+                        type=str, default='')
+
     return parser
 
 TABLES = {}
@@ -2368,7 +2371,10 @@ def main():
 
     load_json_config(standard_client, args.json)
 
-    RuntimeAPI(args.pre, standard_client, mc_client).cmdloop()
+    if args.cmd != '':
+        RuntimeAPI(args.pre, standard_client, mc_client).onecmd(args.cmd)
+    else:
+        RuntimeAPI(args.pre, standard_client, mc_client).cmdloop()
 
 if __name__ == '__main__':
     main()
