@@ -18,6 +18,7 @@
 #include <thread>
 #include <vector>
 #include <functional>
+#include <string>
 
 using ts_res = std::chrono::microseconds;
 using std::chrono::duration_cast;
@@ -77,6 +78,7 @@ class SimpleSumeSwitch : public Switch {
   static packet_id_t packet_id;
   TransmitFn my_transmit_fn;
   std::map<port_t, sume_port_t> port_map;
+  std::map<sume_port_t, std::string> nf_name_map;
 };
 
 #endif  // SIMPLE_SUME_SWITCH_H_

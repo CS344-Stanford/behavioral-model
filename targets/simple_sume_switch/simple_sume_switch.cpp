@@ -72,6 +72,12 @@ SimpleSumeSwitch::SimpleSumeSwitch(port_t max_port, bool enable_swap)
   port_map[4] = NF2_MASK;
   port_map[5] = NF3_MASK;
 
+  nf_name_map[DMA0_MASK] = "dma";
+  nf_name_map[NF0_MASK] = "nf0";
+  nf_name_map[NF1_MASK] = "nf1";
+  nf_name_map[NF2_MASK] = "nf2";
+  nf_name_map[NF3_MASK] = "nf3";
+
   add_required_field("sume_metadata_t", "dma_q_size");
   add_required_field("sume_metadata_t", "nf3_q_size");
   add_required_field("sume_metadata_t", "nf2_q_size");
@@ -107,17 +113,20 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   auto packet = new_packet_ptr(port_num, packet_id++, len,
                                bm::PacketBuffer(len + 512, buffer, len));
 
-  BMELOG(packet_in, *packet); // TODO: what is packet_in?
+  BMELOG(packet_in, *packet);
 
   PHV *phv = packet->get_phv();
   // many current P4 programs assume this
   // it is also part of the original P4 spec
   phv->reset_metadata();
 
-  // TODO(sibanez): set queue size metadata fields
+  // TODO: set queue size metadata fields
 
   sume_port_t src_port = port_map[port_num];
   phv->get_field("sume_metadata_t.src_port").set(src_port);
+
+  BMLOG_DEBUG_PKT(*packet, "Processing packet received on port {}",
+                  nf_name_map[src_port]);
 
   // using packet register 0 to store length, this register will be updated for
   // each add_header / remove_header primitive call
@@ -127,11 +136,6 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
   Parser *parser = this->get_parser("parser");
   Pipeline *pipeline = this->get_pipeline("TopPipe");
   Deparser *deparser = this->get_deparser("deparser");
-
-  port_t ingress_port = packet->get_ingress_port();
-  (void) ingress_port;
-  BMLOG_DEBUG_PKT(*packet, "Processing packet received on port {}",
-                  ingress_port);
 
   parser->parse(packet.get());
   pipeline->apply(packet.get());
@@ -146,6 +150,7 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
     // if the send_dig_to_cpu field is set
     return 0;
   }
+  BMLOG_DEBUG_PKT(*packet, "Packet destined for port {} at end of ingress", nf_name_map[dst_port]);
 
   // TODO: add support for broadcasting
   port_t egress_spec = 0;
@@ -161,7 +166,6 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
     egress_spec = 5;
 
   packet->set_egress_port(egress_spec);
-  BMLOG_DEBUG_PKT(*packet, "Packet destined for port {} at end of ingress", egress_spec);
 
   bool send_dig_to_cpu = (phv->get_field("sume_metadata_t.send_dig_to_cpu").get_uint() != 0);
   if ((dst_port & DMA0_MASK) && send_dig_to_cpu) {
@@ -183,7 +187,7 @@ SimpleSumeSwitch::receive_(port_t port_num, const char *buffer, int len) {
 
   BMELOG(packet_out, *packet);
   BMLOG_DEBUG_PKT(*packet, "Transmitting packet of size {} out of port {}",
-                  packet->get_data_size(), packet->get_egress_port());
+                  packet->get_data_size(), nf_name_map[dst_port]);
 
   my_transmit_fn(packet->get_egress_port(), packet->get_packet_id(),
                  packet->data(), packet->get_data_size());
